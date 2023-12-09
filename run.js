@@ -1,4 +1,4 @@
-import init, {run} from "./scramble_wasm.js";
+import init, {run} from "pkg/scramble_wasm.js";
 
 console.log('stared first js file');
 let elem = document.getElementById('submit_button');
