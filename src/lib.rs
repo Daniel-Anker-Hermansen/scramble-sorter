@@ -1,21 +1,39 @@
+extern crate console_error_panic_hook;
 use std::{fmt::Write as _, io::{Read, Cursor, Write}, collections::HashMap};
+use wasm_bindgen::prelude::*;
+use std::panic;
+use js_sys::{Uint8Array,ArrayBuffer};
 
-#[tokio::main]
-async fn main() {
-    let mut reader = std::fs::File::open("scrambles.zip").unwrap();
-    let mut zip = zip::ZipArchive::new(&mut reader).unwrap();
+use zip::{read::ZipFile, ZipArchive};
+
+
+#[wasm_bindgen]
+pub async fn run(buffer: ArrayBuffer, competition_name: &str) ->(js_sys::Uint8Array){
+    panic::set_hook(Box::new(console_error_panic_hook::hook));
+    println!("hi from rust!");
+    let uint8_array = Uint8Array::new(&buffer);
+    let my_vec = uint8_array.to_vec();
+
+    // let mut reader = std::fs::File::create("foo.txt").unwrap();
+    let mut in_memory_file = Cursor::new(my_vec);
+    // reader.write_all(&my_vec).unwrap();
+
+    // let mut reader = std::fs::File::open("scrambles.zip").expect("could not open scramble zip");
+    println!("found scramble file");
+    let mut zip = zip::ZipArchive::new(&mut in_memory_file).unwrap();
     let passcode_file_name = zip.file_names().find(|file| file.contains("Passcodes")).unwrap().to_string();
     let mut passcodes_file = zip.by_name_decrypt(&passcode_file_name, b"hej").unwrap().unwrap();
     let mut passcodes = String::new();
     passcodes_file.read_to_string(&mut passcodes).unwrap();
     drop(passcodes_file);
     let scrambles_file_name = zip.file_names().find(|file| file.contains("PDFs")).unwrap().to_string();
+    //TODO Fix passcode
     let mut scrambles_file = zip.by_name_decrypt(&scrambles_file_name, b"hej").unwrap().unwrap();
     let mut scrambles = Vec::new();
     scrambles_file.read_to_end(&mut scrambles).unwrap();
     let mut cursor = Cursor::new(scrambles);
 
-    let map: HashMap<String, String> = passcodes.lines()
+    let activity_name_to_passcode: HashMap<String, String> = passcodes.lines()
         .skip(9)
         .map(|pair| {
             let (event, passcode) = pair.split_once(":").unwrap();
@@ -47,33 +65,49 @@ async fn main() {
         })
         .collect();
     
-    let wcif = get_wcif("BjerringbroOpen2023").await;
-    let codes = extract_round_order_from_json(wcif);
+    let wcif = get_wcif(competition_name).await;
+    let activity_codes = extract_round_order_from_json(wcif);
 
     let mut indices: Vec<_> = filenames.into_iter()
         .map(|(e, filename)| {
             let equiv = equiv_assignment_code(&e);
-            let index = codes.iter().position(|code| code == &equiv).unwrap();
+            let index = activity_codes.iter().position(|code| code == &equiv).unwrap();
             (index, e.3, filename)
         })
         .collect();
     indices.sort_by_key(|(i, group, _)| (*i, group.clone()));
-    
+
     let mut buffer = Cursor::new(Vec::new());
-    let mut new_zip = zip::ZipWriter::new(&mut buffer);
+    let mut sorted_scramble_zip = zip::ZipWriter::new(&mut buffer);
     let mut passcodes = String::new();
+    let mut passcode_failures = Vec::new();
     for (idx, (_, _, filename)) in indices.into_iter().enumerate() {
-        let zip_file = scrambles_zip.by_name(&filename).unwrap();
-        new_zip.raw_copy_file_rename(zip_file, format!("{:04}: {}", idx, filename)).unwrap();
-        let (without_zip, _) = filename.split_once(".").unwrap();
-        dbg!(&without_zip);
-        writeln!(&mut passcodes, "{}: {}", without_zip, map[without_zip]);
+        let individual_scramble_zip = scrambles_zip.by_name(&filename).unwrap();
+        sorted_scramble_zip.raw_copy_file_rename(individual_scramble_zip, format!("{:04}: {}", idx, filename)).unwrap();
+        let (individual_scramble_file_name, _) = filename.split_once(".").unwrap();
+        let passcode_for_pdf = &activity_name_to_passcode[individual_scramble_file_name];
+        let result = writeln!(&mut passcodes, "{}: {}", individual_scramble_file_name, passcode_for_pdf);
+        match result {
+            Ok(_) => {}
+            Err(err) => {
+                passcode_failures.push(format!("Failed getting passcode for: {}. Error: {}", individual_scramble_file_name, err));
+            }
+        }
     }
-    let mut file = std::fs::File::create("sorted_scrambles.zip").unwrap();
-    new_zip.finish().unwrap();
-    drop(new_zip);
-    file.write_all(&buffer.into_inner()).unwrap();
-    println!("{}", passcodes);
+
+    // let mut sorted_scramble_file = std::fs::File::create("sorted_scrambles.zip").unwrap();
+    sorted_scramble_zip.finish().unwrap();
+    drop(sorted_scramble_zip);
+    // sorted_scramble_file.write_all(&buffer.into_inner()).unwrap();
+    // let mut sorted_passcode_file = std::fs::File::create("sorted_passcodes.txt").unwrap();
+    // sorted_passcode_file.write_all(passcodes.as_bytes()).unwrap();
+    let mut serialized_data = Vec::new();
+    serialized_data.write_all(&buffer.into_inner()).unwrap();
+
+    let sorted_scrambles = js_sys::Uint8Array::from(serialized_data.as_slice());
+    // (passcodes,sorted_scrambles)
+    sorted_scrambles
+    
 }
 
 fn equiv_assignment_code(event: &(String, Option<String>, Option<String>, Option<String>)) -> String {
@@ -108,7 +142,7 @@ fn equiv_assignment_code(event: &(String, Option<String>, Option<String>, Option
 }
 
 fn extract_round_order_from_json(json: serde_json::Value) -> Vec<String> {
-    let mut activities: Vec<&serde_json::Value> = json["schedule"]["venues"].as_array().unwrap()
+    let mut activities: Vec<&serde_json::Value> = json["schedule"]["venues"].as_array().expect("failed to parse response from WCA Api")
         .into_iter()
         .flat_map(|venue| venue["rooms"].as_array().unwrap()
                   .into_iter().flat_map(|room| room["activities"].as_array().unwrap()))
