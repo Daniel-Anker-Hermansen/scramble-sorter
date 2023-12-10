@@ -1,5 +1,7 @@
 # Rust WASM Scramble Sorter
 
+**Available at:** https://tools.danskspeedcubingforening.dk/scramble_sort
+
 A tool for sorting your scrambles and individual passcodes for WCA competitions! 
 
 The scenario where you would use this tool is when you are using an electronic device for displaying the scrambles at a competition.
