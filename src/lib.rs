@@ -57,7 +57,7 @@ pub async fn run(buffer: ArrayBuffer, competition_name: &str, password: &str) ->
         })
         .collect();
     
-    let wcif = get_wcif(competition_name).await;
+    let wcif = get_wcif(competition_name).await?;
     let activity_codes = extract_round_order_from_json(wcif);
 
     let mut indices = filenames.into_iter()
@@ -144,12 +144,15 @@ fn extract_round_order_from_json(json: serde_json::Value) -> Vec<String> {
     activities.into_iter().map(|activity| activity["activityCode"].as_str().unwrap().to_owned()).collect()
 }
 
-async fn get_wcif(comp_name: &str) -> serde_json::Value {
-    let wcif = reqwest::get(format!("https://api.worldcubeassociation.org/competitions/{}/wcif/public", comp_name))
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-    serde_json::from_str(&wcif).unwrap()
+async fn get_wcif(comp_name: &str) -> Result<serde_json::Value,JsError> {
+    let wcif_response = reqwest::get(format!("https://api.worldcubeassociation.org/competitions/{}/wcif/public", comp_name)).await?;
+    if wcif_response.status().is_success(){
+            let wcif = wcif_response.text().await.unwrap();
+            Ok(serde_json::from_str(&wcif).unwrap())
+        }
+    else{
+        // Err()
+        Err(JsError::new("The competition ID supplied gives an error. Check that you wrote it correctly and that the WCA site is working.")) 
+    }
+    
 }

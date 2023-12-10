@@ -9,56 +9,54 @@
 
 import init, {run} from "./pkg/scramble_wasm.js";
 
-console.log('stared first js file');
+console.log('JS loaded.');
 let elem = document.getElementById('submit_button');
 elem.addEventListener('click',run_sorting);
 
 const wasm = init();
 
-export async function handleFile() {
+export async function run_sorting() {
+    console.log('button clicked');
     const fileInput = document.getElementById('scrambles');
     const compid = document.getElementById('compid').value;
+    const passcode = document.getElementById('pwd').value;
+    const filename = `${compid}SortedScrambles.zip`
     console.log(compid)
     const file = fileInput.files[0];
-    console.log("found file")
+    
     if (file) {
-        // Convert the file to an ArrayBuffer
+        console.log("found file")
 
         const arrayBuffer = await readFileAsync(file);
         console.log("js read file");
         console.log("ArrayBuffer Length:", arrayBuffer.byteLength);
         // Pass the ArrayBuffer to the Rust Wasm module
-        const result = await wasm.then(()=> run(arrayBuffer,compid, "hej"))
-            .catch((e) => console.log(e.message));
-        // update_elements(result);
-
-        // Handle the result from Rust if needed
-            console.log(result);
-
-            downloadFile(result, 'example.zip');
+        const result = await wasm.then(()=> run(arrayBuffer,compid, passcode))
+            .catch((e) => (clearlyShowError(e.message)));
+            console.log(result)
+            downloadFile(result,filename);
+            console.log('Done!')
     } else {
         console.error("No file selected");
     }
 }
 
+function clearlyShowError(message){
+    console.log(message);
+    document.getElementById('error_field').textContent = message;
+}
+
 function downloadFile(data, fileName) {
-    // const blob = new Blob([data], { type: mimeType });
-    const mimeType = 'application/zip';  // Set the MIME type to "application/zip"
-    const blob = new Blob([data], { type: mimeType });
+    const blob = new Blob([data], { type: 'application/zip' });
     const url = window.URL.createObjectURL(blob);
 
     const a = document.createElement('a');
     a.href = url;
     a.download = fileName;
 
-    // Append the anchor to the body and trigger a click event
     document.body.appendChild(a);
-    a.click();
-
-    // Remove the anchor from the body
+    a.click(); // Click the new temp url for downloading the data
     document.body.removeChild(a);
-
-    // Revoke the URL
     window.URL.revokeObjectURL(url);
 }
 
@@ -71,39 +69,122 @@ export async function readFileAsync(file) {
     });
 }
 
-export function run_sorting(){
-    console.log('button clicked');
-    let file_thing = handleFile();
-    // let memo = wasm.then(()=>run()).then(update_elements);
-}
+    </script>    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400&display=swap');
 
-function update_elements(passcodes){
-    console.log(passcodes);
-    document.getElementById("scrambles_all").innerHTML = passcodes;
-}
+            * {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 500;
+            font-size: 16px;
+            background-color: #32333b;
+            color: #f5f5f5;
+            }
 
-    /*	let path = window.location.pathname;
-	console.log(path);
-	let updates = path + "/run.js";
-	// let element = document.getElementById("css");
-	// element.href = path + "/static/style.css";
-	import(updates).then(() => console.log("imported?"));*/
-    </script>
+            h1{
+            font-size: 30px;
+            }
+            h2 {
+            font-size: 20px;
+            }
+
+            p {
+            margin-right: 5px;
+            }
+
+            /* input[type="submit"], */
+            button,
+            input[type='file'],
+            input[type="reset"],
+            input[type="button"] {
+            display: inline-block;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            text-decoration: none;
+            color: #333;
+            background-color: #fff;
+            box-shadow: 0 0 5px #ccc;
+            }
+
+            input[type="submit"]{
+            display: none;
+            }
+
+            /* input[type="submit"]:hover, */
+            button:hover,
+            input[type="reset"]:hover,
+            input[type='file'],
+            input[type="button"]:hover {
+            background-color: #eee;
+            cursor: pointer; 
+            }
+
+            .break{
+            display: block;
+            display: inline-block;
+            }
+
+            button.medium{
+            font-size: 15px;
+            padding: 5px 10px;
+            }
+
+            button.small{
+            font-size: 14px;
+            padding: 5px 10px;
+            }
+
+            b {
+            font-weight: bold;
+            }
+
+            form {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            }
+
+            form p {
+            margin: 10px 0;
+            }
+
+            .error_field{
+                border-radius: 8px;
+                background-color: #da145c;
+            }
+
+            form input[type="text"], form input[type="checkbox"] {
+            /* margin-left: 10px; */
+            margin-top: 5px;
+            display: flex;
+            }
+
+    </style>
+      
 </head>
 <body>
 
     <h1>Sorting of scrambles and passcodes</h1>
+
+    <p>A tool for sorting your scrambles and individual passcodes for WCA competitions! 
+        The scenario where you would use this tool is when you are using an electronic device for displaying the scrambles at a competition.
+        You will get a txt file with all the passcodes in the order that they will be used during the competition, 
+        and a zip with numbers prepended such that the scrambles will be in order.</p>
+
+    <p>The program will run all the required code in your browser. Thus, the scramble file is not sent to a server or stored anywhere. 
+        Your internet connection is only used to send an API call to the WCA website such that the program will know the schedule and can do the sorting accordingly.</p>
+
+    <h2 class="error_field" id="error_field"></h2>
 
    
     <p>Write the competition ID</p>
     <input type="text" name="compid" id="compid"/>
     <p>Upload the original file generated by TNoodle</p>
     <input type="file" name="scrambles" id="scrambles"/>
+    <p>The passcode you set for the scramble file</p>
+    <input type="text" name="pwd" id="pwd"/>
     <br>
     <button id="submit_button">Submit</button>
-    <!-- </form> -->
-
-    <p class='scrambles_all' id="scrambles_all"></p>
 
 </body>
 </html>
